@@ -6,6 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dissolve-Effect</title>
     <style>
+      body {
+        background: repeating-conic-gradient(#eee 0 25%, #ddd 0 50%) 0 / 20px
+          20px;
+      }
+      #c {
+        display: block;
+        background: transparent !important;
+      }
+    </style>
+    <style>
       html,
       body {
         margin: 0;
@@ -89,7 +99,7 @@
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.7/gsap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.7/ScrollTrigger.min.js"></script>
-    
+
     <script>
       gsap.registerPlugin(ScrollTrigger);
     </script>
