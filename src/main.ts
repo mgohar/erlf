@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { Pane } from "tweakpane";
 import { OrbitControls } from "three/examples/jsm/Addons.js";
-import Stats from "three/examples/jsm/libs/stats.module.js";
+// import Stats from "three/examples/jsm/libs/stats.module.js";
 import {
   EffectComposer,
   RenderPass,
@@ -11,8 +11,10 @@ import {
   ShaderPass,
 } from "three/examples/jsm/Addons.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 
 // ========================================================
 // Globals
@@ -24,8 +26,8 @@ function isMobileDevice() {
 }
 
 async function main() {
-  const stats = new Stats();
-  document.body.appendChild(stats.dom);
+  // const stats = new Stats();
+  // document.body.appendChild(stats.dom);
 
   const params = {
     exposure: 3,
@@ -53,16 +55,16 @@ async function main() {
     cam.position.set(0, 1, 80);
   }
 
-  // Renderer (MSAA off; we’re post-processing)
+  // Renderer (MSAA off; we're post-processing)
   const re = new THREE.WebGLRenderer({
     canvas: cnvs,
     antialias: false,
     alpha: true,
-    powerPreference: "high-performance",
+    // powerPreference: "high-performance",
   });
 
   const scale = isMobileDevice() ? 0.7 : 1.0;
-  let DPRCap = window.innerWidth < 600 ? 0.8 : 1.2;
+  let DPRCap = isMobileDevice() ? 0.95 : 1;
   const DPR = Math.min(window.devicePixelRatio || 1, DPRCap);
   re.setPixelRatio(DPR);
   re.setSize(cnvs.clientWidth * scale, cnvs.clientHeight * scale, false);
@@ -70,6 +72,12 @@ async function main() {
   re.toneMappingExposure = params.exposure;
   re.outputColorSpace = THREE.SRGBColorSpace;
   re.setClearColor(0x000000, 0); // Clear to transparent
+
+  const ktx2 = new KTX2Loader()
+    .setTranscoderPath(
+      "https://unpkg.com/three@0.172.0/examples/jsm/libs/basis/"
+    )
+    .detectSupport(re);
 
   // Scene lighting intensity (global)
   scene.environmentIntensity = params.environmentIntensity;
@@ -81,16 +89,19 @@ async function main() {
   // ========================================================
   // Effect chain — single composer (no double scene render)
   // ========================================================
-  const composer = new EffectComposer(re, new THREE.WebGLRenderTarget(
-    cnvs.clientWidth * scale,
-    cnvs.clientHeight * scale,
-    {
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-      format: THREE.RGBAFormat,
-      type: THREE.HalfFloatType,
-    }
-  ));
+  const composer = new EffectComposer(
+    re,
+    new THREE.WebGLRenderTarget(
+      cnvs.clientWidth * scale,
+      cnvs.clientHeight * scale,
+      {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.UnsignedByteType,
+      }
+    )
+  );
   const renderPass = new RenderPass(scene, cam);
   renderPass.clearColor = new THREE.Color(0, 0, 0);
   renderPass.clearAlpha = 0;
@@ -189,13 +200,17 @@ async function main() {
   scene.add(erlfgro, lightgrp);
 
   const { geometry, material } = await loadGLTFModel(
+    ktx2,
     re,
-    "https://abc-xyz.b-cdn.net/ERLF/Model/step-resize1.glb"
+    // "https://abc-xyz.b-cdn.net/ERLF/Model/newERLF.glb"
+    "https://abc-xyz.b-cdn.net/ERLF/Model/newERLF-ktx2.glb"
   );
   const { geometry: blindfoldGeometry, material: blindfoldMaterial } =
     await loadGLTFModel(
+      ktx2,
       re,
-      "https://abc-xyz.b-cdn.net/ERLF/Model/blindfold.glb"
+      // "https://abc-xyz.b-cdn.net/ERLF/Model/blindfold.glb"
+      "https://abc-xyz.b-cdn.net/ERLF/Model/blindfold-ktx2.glb"
     );
   const blindfoldMesh = new THREE.Mesh(blindfoldGeometry, blindfoldMaterial);
 
@@ -231,7 +246,7 @@ async function main() {
   });
   const bfTextMesh = new THREE.Mesh(bfTextGeo, bfTextMat);
   bfTextMesh.position.set(-0.1, 0.4, 9.99);
-  bfTextMesh.scale.set(0.353, 0.051, 0.22);
+  bfTextMesh.scale.set(0.45, 0.06, 0.22);
   erlfgro.add(bfTextMesh);
 
   // Primary mesh
@@ -268,7 +283,7 @@ async function main() {
 
   // Dissolve (shader patch)
   const dissolveUniformData = {
-    uEdgeColor: { value: new THREE.Color(0xbfbfbf) },
+    uEdgeColor: { value: new THREE.Color(0xffffff) },
     uFreq: { value: 1.0 },
     uAmp: { value: 16.0 },
     uProgress: { value: -20.0 },
@@ -318,18 +333,26 @@ async function main() {
   };
 
   const mesh = new THREE.Mesh(meshGeo, phyMat);
-  mesh.position.set(0, -7.3, -7.3);
-  mesh.scale.set(1.6, 1.6, 1.6);
+  mesh.position.set(-0.1, -8.8, -7.3);
+  mesh.scale.set(2, 2, 2);
   erlfgro.add(mesh);
   erlfgro.position.set(0, 0, 30);
 
   // ========================================================
   // Particles (no per-frame attribute re-creation)
   // ========================================================
-  const particleTexture = new THREE.TextureLoader().load(
-    "https://abc-xyz.b-cdn.net/ERLF/textures/particle.png"
+  // const particleTexture = new THREE.TextureLoader().load(
+  //   "https://abc-xyz.b-cdn.net/ERLF/textures/particle.png"
+  // );
+
+  const particleTexture = await ktx2.loadAsync(
+    "https://abc-xyz.b-cdn.net/ERLF/textures/particle.ktx2"
   );
+
   particleTexture.generateMipmaps = false;
+  // particleTexture.colorSpace = THREE.SRGBColorSpace;
+  // particleTexture.depthTest = false;
+  // particleTexture.depthWrite = false;
   particleTexture.minFilter = THREE.LinearFilter;
   particleTexture.magFilter = THREE.LinearFilter;
   particleTexture.anisotropy = Math.min(2, re.capabilities.getMaxAnisotropy());
@@ -384,17 +407,19 @@ async function main() {
   meshGeo.setAttribute("aAngle", aAngleAttr);
 
   const particleMat = new THREE.ShaderMaterial({
-    transparent: true,
+    transparent: false,
     blending: THREE.AdditiveBlending,
+    depthTest: false,
+    depthWrite: false,
     uniforms: {
-      uTexture: { value: particleTexture },
+      // uTexture: { value: particleTexture },
       uPixelDensity: { value: re.getPixelRatio() },
       uProgress: dissolveUniformData.uProgress,
       uEdge: dissolveUniformData.uEdge,
       uAmp: dissolveUniformData.uAmp,
       uFreq: dissolveUniformData.uFreq,
-      uBaseSize: { value: isMobileDevice() ? 700 : 700 },
-      uColor: { value: new THREE.Color(0xbfbfbf) },
+      uBaseSize: { value: isMobileDevice() ? 250 : 250 },
+      uColor: { value: new THREE.Color(0xffffff) },
     },
     vertexShader: `
       ${snoise}
@@ -426,7 +451,7 @@ async function main() {
       uniform vec3 uColor;
       uniform float uEdge;
       uniform float uProgress;
-      uniform sampler2D uTexture;
+      // uniform sampler2D uTexture;
       varying float vNoise;
       varying float vAngle;
       void main(){
@@ -435,8 +460,8 @@ async function main() {
         vec2 coord = gl_PointCoord - 0.5;
         float c = cos(vAngle), s = sin(vAngle);
         coord = mat2(c, s, -s, c) * coord + 0.5;
-        vec4 tex = texture2D(uTexture, coord);
-        gl_FragColor = vec4(uColor * tex.rgb, 1.0);
+        // vec4 tex = texture2D(uTexture, coord);
+        gl_FragColor = vec4(uColor, 1.0);
       }`,
   });
 
@@ -702,7 +727,7 @@ async function main() {
     re.setSize(w, h, false);
     cam.aspect = w / h;
     cam.updateProjectionMatrix();
-    
+
     // Manually recreate composer render target with alpha support
     const newRT = new THREE.WebGLRenderTarget(w, h, {
       minFilter: THREE.LinearFilter,
@@ -714,7 +739,7 @@ async function main() {
     composer.renderTarget2.dispose();
     composer.renderTarget1 = newRT;
     composer.renderTarget2 = newRT.clone();
-    
+
     const s = adaptive.bloomScale;
     bloomPass.setSize(
       Math.max(1, Math.floor(w * s)),
@@ -748,7 +773,7 @@ async function main() {
   gsapanimation(scene, erlfgro, blindfoldMesh, bfTextMesh, dissolveUniformData);
 
   // HDR env (smaller map is cheaper)
-  hdr(scene, "studio_small_08_1k.hdr");
+  hdr(scene, "studio_small_08_1k.hdr", re);
 
   // ========================================================
   // Render loop
@@ -756,7 +781,7 @@ async function main() {
   let frame = 0;
   function animate() {
     requestAnimationFrame(animate);
-    stats.update();
+    // stats.update();
     orbCtrls.update();
 
     // FPS monitor and bloom auto-clamp
@@ -811,7 +836,9 @@ async function main() {
     // one render only (with GPU timing)
     pollGpu();
     beginGpu("frame");
-    composer.render();
+    // composer.render();
+    re.render(scene, cam);
+
     endGpu();
 
     if (enablemousemove) {
@@ -829,6 +856,7 @@ async function main() {
 // Helpers
 // ========================================================
 async function loadGLTFModel(
+  ktx2: KTX2Loader,
   re: THREE.WebGLRenderer,
   url: string
 ): Promise<{
@@ -836,13 +864,21 @@ async function loadGLTFModel(
   material: THREE.Material | THREE.Material[];
 }> {
   const loader = new GLTFLoader();
-  const ktx2 = new KTX2Loader()
-    .setTranscoderPath(
-      "https://unpkg.com/three@0.172.0/examples/jsm/libs/basis/"
-    )
-    .detectSupport(re);
+
+  // Add DRACOLoader
+  const dracoLoader = new DRACOLoader();
+  dracoLoader.setDecoderPath(
+    "https://www.gstatic.com/draco/versioned/decoders/1.5.6/"
+  );
+  loader.setDRACOLoader(dracoLoader);
+
+  // Add MeshoptDecoder
+  loader.setMeshoptDecoder(MeshoptDecoder);
+
   loader.setKTX2Loader(ktx2);
+
   const gltf = await loader.loadAsync(url);
+
   let geometry: THREE.BufferGeometry | null = null;
   let material: THREE.Material | THREE.Material[] | null = null;
   gltf.scene.traverse((child) => {
@@ -852,6 +888,10 @@ async function loadGLTFModel(
     }
   });
   if (!geometry || !material) throw new Error("No geometry/material in GLTF");
+
+  // Clean up loaders
+  dracoLoader.dispose();
+
   return { geometry, material };
 }
 
@@ -886,9 +926,9 @@ function gsapanimation(
     .to(erlfgro.scale, { x: 1, y: 1, z: 1 }, 4)
     .to(erlfgro.rotation, { y: 0 }, 4);
 
-  if (window.innerWidth > 600) {
-    tl.to(dissolveUniformData.uProgress, { value: 20 }, 5);
-  }
+  // if (window.innerWidth > 600) {
+  tl.to(dissolveUniformData.uProgress, { value: 20 }, 5);
+  // }
 
   ScrollTrigger.create({
     animation: tl,
@@ -899,16 +939,27 @@ function gsapanimation(
   });
 }
 
-function hdr(scene, hdrpath: string) {
+// Line 943-955
+function hdr(scene, hdrpath: string, re: THREE.WebGLRenderer) {
   const rgbeLoader = new RGBELoader();
-  // rgbeLoader.setPath("https://abc-xyz.b-cdn.net/ERLF/cubeMap2/studio_small_08_1k.hdr");
   rgbeLoader.load(
     "https://abc-xyz.b-cdn.net/ERLF/cubeMap2/studio_small_08_1k.hdr",
     (texture) => {
       texture.mapping = THREE.EquirectangularReflectionMapping;
-      // smaller env map helps reflection sampling cost
-      // Consider PMREM if needed
-      scene.environment = texture;
+
+      // Reduce resolution to save memory
+      texture.minFilter = THREE.LinearMipmapLinearFilter;
+      texture.generateMipmaps = true;
+
+      // Use PMREM for better performance and smaller memory
+      const pmremGenerator = new THREE.PMREMGenerator(re);
+      pmremGenerator.compileEquirectangularShader();
+      const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+      scene.environment = envMap;
+
+      // Clean up
+      pmremGenerator.dispose();
+      texture.dispose();
     }
   );
 }
